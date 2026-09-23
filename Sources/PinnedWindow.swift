@@ -114,6 +114,7 @@ final class MirrorView: NSView {
     private var dragStart = NSPoint.zero
     private var originStart = NSPoint.zero
     private var dragged = false
+    private let badge = NSTextField(labelWithString: "📌")
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -121,7 +122,6 @@ final class MirrorView: NSView {
         wantsLayer = true
         layer?.contentsGravity = .resizeAspect
 
-        let badge = NSTextField(labelWithString: "📌")
         badge.font = .systemFont(ofSize: 14)
         badge.translatesAutoresizingMaskIntoConstraints = false
         addSubview(badge)
@@ -134,6 +134,15 @@ final class MirrorView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    // Toute la vue reçoit les clics, y compris sur la punaise (gérée dans mouseUp).
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        super.hitTest(point) != nil ? self : nil
+    }
+
+    private func isOnBadge(_ event: NSEvent) -> Bool {
+        badge.frame.insetBy(dx: -8, dy: -6).contains(convert(event.locationInWindow, from: nil))
+    }
 
     override func mouseDown(with event: NSEvent) {
         dragStart = NSEvent.mouseLocation
@@ -149,7 +158,8 @@ final class MirrorView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        if !dragged { onClick?() }
+        guard !dragged else { return }
+        if isOnBadge(event) { onUnpin?() } else { onClick?() }
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {

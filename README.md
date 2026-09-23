@@ -8,7 +8,7 @@
 
 - **Barre de menus** : liste des fenêtres ouvertes, pour les mettre au premier plan ou les épingler.
 - **⌃⌥P** : épingle ou désépingle la fenêtre active.
-- **Fenêtre épinglée** : cliquez pour travailler dedans, glissez pour la déplacer, clic droit pour la désépingler.
+- **Fenêtre épinglée** : cliquez pour travailler dedans, glissez pour la déplacer. Cliquez sur la punaise 📌 (ou clic droit) pour la désépingler.
 - Visible sur tous les bureaux, y compris par-dessus les apps en plein écran.
 - Ouverture automatique à l'ouverture de session (activable dans le menu).
 
