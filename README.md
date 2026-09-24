@@ -4,75 +4,53 @@
 
 <p align="center">Mettez n'importe quelle fenêtre au premier plan et épinglez-la au-dessus de toutes les autres sur macOS.</p>
 
+<p align="center"><a href="../../releases/latest"><b>⬇︎ Télécharger la dernière version</b></a></p>
+
 ## Fonctionnalités
 
-- **Recherche rapide (⌃⌥Espace)** : tapez quelques lettres pour trouver une fenêtre. ↩ la met au premier plan, ⌘↩ l'épingle ou la désépingle.
-- **Épingler la fenêtre active (⌃⌥P)** : même raccourci pour la désépingler.
-- **Menu 📌** : les fenêtres visibles, avec leurs actions. Les fenêtres réduites, masquées ou sur un autre bureau ne sont pas proposées.
-- **Sur une fenêtre épinglée** :
-  - clic : travailler dans la vraie fenêtre ; glisser : déplacer ;
-  - glisser un coin (sauf en haut à droite) : redimensionner, pour garder une miniature dans un coin de l'écran ;
-  - ⌥ + molette : régler l'opacité ;
-  - clic sur la punaise 📌 : désépingler ;
-  - clic droit : mode fantôme (les clics traversent la fenêtre), opacité, recadrage, taille réelle.
+- **Épingler une fenêtre** : elle reste visible au-dessus de toutes les autres, sur tous les bureaux, même par-dessus les apps en plein écran.
+- **Recherche rapide** : retrouvez n'importe quelle fenêtre en tapant quelques lettres, puis mettez-la au premier plan ou épinglez-la.
+- **Miniature** : réduisez une fenêtre épinglée pour la garder dans un coin de l'écran, par exemple une vidéo ou une visio.
 - **Recadrage** : n'épinglez qu'une partie d'une fenêtre, par exemple le lecteur vidéo d'une page web.
-- **Mémoire** : les épingles sont restaurées après une relance d'Épingle, d'une app ou du Mac.
-- **Réglages** : raccourcis personnalisables, fluidité (30 ou 60 images/s), punaise visible ou non, ouverture à la connexion.
-
-## Comment ça marche
-
-macOS n'autorise pas une app à modifier le niveau des fenêtres d'une autre app. Épingle affiche donc une **copie en direct** de la fenêtre (via ScreenCaptureKit) dans un panneau flottant, visible sur tous les bureaux.
-
-Quand vous travaillez dans la fenêtre épinglée, la copie disparaît et la capture s'arrête. Dès que vous passez à une autre fenêtre, même dans la même app, la copie reprend sa place au premier plan.
-
-La capture reste locale : rien n'est enregistré ni envoyé. L'indicateur violet d'enregistrement d'écran de macOS s'affiche tant qu'une copie est visible.
+- **Opacité et mode fantôme** : rendez la fenêtre transparente, et laissez les clics passer à travers pour travailler en dessous.
+- **Mémoire** : vos fenêtres épinglées sont retrouvées après un redémarrage.
 
 ## Installation
 
-### Télécharger
+Épingle fonctionne sur macOS 14 (Sonoma) ou plus récent, sur les Mac Apple Silicon et Intel.
 
-Chaque version est publiée sur la page [Releases](../../releases) (Apple Silicon et Intel, macOS 14 ou plus). Ouvrez le `.dmg` et glissez Épingle dans Applications.
+1. Téléchargez le fichier `.dmg` depuis la page [Releases](../../releases/latest).
+2. Ouvrez-le et glissez **Épingle** dans le dossier **Applications**.
+3. Lancez Épingle. Comme l'app n'est pas distribuée par l'App Store, macOS la bloque la première fois : allez dans **Réglages Système → Confidentialité et sécurité** et cliquez sur **Ouvrir quand même**.
+4. Autorisez Épingle dans **Réglages Système → Confidentialité et sécurité** :
+   - **Accessibilité** : pour mettre les fenêtres au premier plan.
+   - **Enregistrement de l'écran** : pour afficher les fenêtres épinglées.
+5. Relancez Épingle. Une icône 📌 apparaît dans la barre de menus.
 
-Sans signature Developer ID, macOS bloque la première ouverture : lancez l'app une fois, puis cliquez sur **Ouvrir quand même** dans Réglages Système → Confidentialité et sécurité.
+Épingle s'ouvre ensuite automatiquement à chaque démarrage du Mac. Vous pouvez désactiver cette option dans les réglages.
 
-### Compiler
+## Utilisation
 
-Nécessite les Command Line Tools (`xcode-select --install`).
-
-```sh
-./build.sh                 # compile et installe dans /Applications
-UNIVERSAL=1 ./build.sh     # binaire universel Apple Silicon + Intel
-./make-dmg.sh              # crée build/Epingle-<version>.dmg à partager
-```
-
-L'icône est générée par `swift Tools/make-icon.swift`.
-
-### Autorisations
-
-Au premier lancement, autorisez Épingle dans **Réglages Système → Confidentialité et sécurité** :
-
-- **Accessibilité** : pour mettre les fenêtres au premier plan, les déplacer et savoir laquelle a le focus.
-- **Enregistrement de l'écran** : pour afficher la copie des fenêtres épinglées.
-
-## Publier une version
-
-Poussez un tag : GitHub Actions compile le binaire universel et crée la version.
-
-```sh
-git tag v2.0 && git push origin v2.0
-```
-
-### Signature et notarisation (optionnel)
-
-Avec un compte Apple Developer (99 $/an), l'app s'ouvre sans avertissement et macOS ne redemande plus les autorisations à chaque mise à jour. Ajoutez ces secrets au dépôt (Settings → Secrets and variables → Actions) :
-
-| Secret | Contenu |
+| Raccourci | Action |
 | --- | --- |
-| `MACOS_CERTIFICATE` | Certificat « Developer ID Application » exporté en .p12, encodé en base64 (`base64 -i cert.p12 \| pbcopy`) |
-| `MACOS_CERTIFICATE_PASSWORD` | Mot de passe du .p12 |
-| `SIGN_IDENTITY` | Nom du certificat, ex. `Developer ID Application: Nom Prénom (TEAMID)` |
-| `APPLE_ID` | Adresse de votre compte Apple Developer |
-| `APPLE_TEAM_ID` | Identifiant d'équipe (10 caractères) |
-| `APPLE_APP_PASSWORD` | Mot de passe pour app, créé sur [account.apple.com](https://account.apple.com) |
+| **⌃⌥P** | Épingler ou désépingler la fenêtre active |
+| **⌃⌥Espace** | Rechercher une fenêtre (↩ pour l'afficher, ⌘↩ pour l'épingler) |
 
-Sans ces secrets, l'app est signée localement (« ad hoc ») et fonctionne quand même.
+Les raccourcis se modifient dans **📌 → Réglages…**.
+
+Sur une fenêtre épinglée :
+
+- **Clic** : travailler dans la fenêtre.
+- **Glisser** : la déplacer.
+- **Glisser un coin** (sauf en haut à droite) : la redimensionner.
+- **⌥ + molette** : régler l'opacité.
+- **Clic sur la punaise 📌** : la désépingler.
+- **Clic droit** : mode fantôme, opacité, recadrage, taille réelle.
+
+En mode fantôme, la fenêtre ne réagit plus aux clics : utilisez le menu 📌 pour le désactiver.
+
+## Bon à savoir
+
+- **Indicateur violet dans la barre de menus** : macOS l'affiche tant qu'une fenêtre épinglée est visible. Épingle affiche en effet une copie en direct de la fenêtre, car macOS ne permet pas de garder la fenêtre d'une autre app au premier plan. Cette copie reste sur votre Mac : rien n'est enregistré ni envoyé.
+- **Travailler dans la fenêtre épinglée** : la copie disparaît pendant que vous l'utilisez, puis revient dès que vous passez à une autre fenêtre.
+- **Fenêtres réduites ou sur un autre bureau** : elles ne sont pas proposées. Affichez-les d'abord pour pouvoir les épingler.
