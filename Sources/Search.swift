@@ -121,7 +121,7 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSTableViewDataSour
 
     private func present(pinned: Set<CGWindowID>) {
         self.pinned = pinned
-        all = Windows.list(includeOffscreen: true)
+        all = Windows.list()
         field.stringValue = ""
         filter()
         let mouse = NSEvent.mouseLocation
@@ -182,14 +182,8 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSTableViewDataSour
     private func choose(pin: Bool) {
         let row = table.selectedRow
         guard results.indices.contains(row) else { return }
-        let w = results[row]
-        // Les fenêtres masquées ne s'épinglent pas.
-        if pin && !w.onScreen && !pinned.contains(w.id) {
-            NSSound.beep()
-            return
-        }
         panel.orderOut(nil)
-        onChoose?(w, pin)
+        onChoose?(results[row], pin)
     }
 
     @objc private func doubleClicked() { choose(pin: false) }
@@ -223,7 +217,6 @@ final class SearchController: NSObject, NSTextFieldDelegate, NSTableViewDataSour
         title.lineBreakMode = .byTruncatingTail
         var detail = w.appName
         if pinned.contains(w.id) { detail = "📌 " + detail }
-        if !w.onScreen { detail += " · masquée (réduite ou sur un autre bureau)" }
         let sub = NSTextField(labelWithString: detail)
         sub.font = .systemFont(ofSize: 11)
         sub.textColor = .secondaryLabelColor

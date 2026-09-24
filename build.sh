@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION=${VERSION:-2.0}
+VERSION=${VERSION:-2.0.2}
 APP=build/Epingle.app
 rm -rf build
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

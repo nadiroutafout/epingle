@@ -200,18 +200,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(.sectionHeader(title: "Fenêtres"))
-        let windows = Windows.list(includeOffscreen: true)
+        let windows = Windows.list()
         if windows.isEmpty { menu.addItem(withTitle: "Aucune fenêtre", action: nil, keyEquivalent: "") }
         for w in windows {
-            let item = NSMenuItem(title: truncate(w.label) + (w.onScreen ? "" : " (masquée)"), action: nil, keyEquivalent: "")
+            let item = NSMenuItem(title: truncate(w.label), action: nil, keyEquivalent: "")
             item.image = appIcon(w.pid)
             let sub = NSMenu()
             addAction(sub, "Mettre au premier plan", #selector(frontItem(_:))).representedObject = w
-            if isPinned(w.id) {
-                addAction(sub, "Désépingler", #selector(pinItem(_:))).representedObject = w
-            } else if w.onScreen {
-                addAction(sub, "Épingler (toujours au premier plan)", #selector(pinItem(_:))).representedObject = w
-            }
+            addAction(sub, isPinned(w.id) ? "Désépingler" : "Épingler (toujours au premier plan)", #selector(pinItem(_:)))
+                .representedObject = w
             item.submenu = sub
             menu.addItem(item)
         }

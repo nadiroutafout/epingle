@@ -8,7 +8,7 @@
 
 - **Recherche rapide (⌃⌥Espace)** : tapez quelques lettres pour trouver une fenêtre. ↩ la met au premier plan, ⌘↩ l'épingle ou la désépingle.
 - **Épingler la fenêtre active (⌃⌥P)** : même raccourci pour la désépingler.
-- **Menu 📌** : toutes les fenêtres avec leurs actions. Les fenêtres masquées (réduites ou sur un autre bureau) peuvent être mises au premier plan, mais pas épinglées.
+- **Menu 📌** : les fenêtres visibles, avec leurs actions. Les fenêtres réduites, masquées ou sur un autre bureau ne sont pas proposées.
 - **Sur une fenêtre épinglée** :
   - clic : travailler dans la vraie fenêtre ; glisser : déplacer ;
   - glisser un coin (sauf en haut à droite) : redimensionner, pour garder une miniature dans un coin de l'écran ;
@@ -31,9 +31,9 @@ La capture reste locale : rien n'est enregistré ni envoyé. L'indicateur violet
 
 ### Télécharger
 
-Chaque version est publiée sur la page [Releases](../../releases) (Apple Silicon et Intel, macOS 14 ou plus). Décompressez l'archive et glissez `Epingle.app` dans Applications.
+Chaque version est publiée sur la page [Releases](../../releases) (Apple Silicon et Intel, macOS 14 ou plus). Ouvrez le `.dmg` et glissez Épingle dans Applications.
 
-Sans signature Developer ID, macOS bloque la première ouverture : faites un clic droit sur l'app → **Ouvrir**, ou autorisez-la dans Réglages Système → Confidentialité et sécurité.
+Sans signature Developer ID, macOS bloque la première ouverture : lancez l'app une fois, puis cliquez sur **Ouvrir quand même** dans Réglages Système → Confidentialité et sécurité.
 
 ### Compiler
 
@@ -42,6 +42,7 @@ Nécessite les Command Line Tools (`xcode-select --install`).
 ```sh
 ./build.sh                 # compile et installe dans /Applications
 UNIVERSAL=1 ./build.sh     # binaire universel Apple Silicon + Intel
+./make-dmg.sh              # crée build/Epingle-<version>.dmg à partager
 ```
 
 L'icône est générée par `swift Tools/make-icon.swift`.
