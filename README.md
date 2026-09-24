@@ -6,29 +6,72 @@
 
 ## Fonctionnalités
 
-- **Barre de menus** : liste des fenêtres ouvertes, pour les mettre au premier plan ou les épingler.
-- **⌃⌥P** : épingle ou désépingle la fenêtre active.
-- **Fenêtre épinglée** : cliquez pour travailler dedans, glissez pour la déplacer. Cliquez sur la punaise 📌 (ou clic droit) pour la désépingler.
-- Visible sur tous les bureaux, y compris par-dessus les apps en plein écran.
-- Ouverture automatique à l'ouverture de session (activable dans le menu).
+- **Recherche rapide (⌃⌥Espace)** : tapez quelques lettres pour trouver une fenêtre. ↩ la met au premier plan, ⌘↩ l'épingle ou la désépingle.
+- **Épingler la fenêtre active (⌃⌥P)** : même raccourci pour la désépingler.
+- **Menu 📌** : toutes les fenêtres, y compris celles réduites ou sur un autre bureau, avec leurs actions.
+- **Sur une fenêtre épinglée** :
+  - clic : travailler dans la vraie fenêtre ; glisser : déplacer ;
+  - glisser un coin (sauf en haut à droite) : redimensionner, pour garder une miniature dans un coin de l'écran ;
+  - ⌥ + molette : régler l'opacité ;
+  - clic sur la punaise 📌 : désépingler ;
+  - clic droit : mode fantôme (les clics traversent la fenêtre), opacité, recadrage, taille réelle.
+- **Recadrage** : n'épinglez qu'une partie d'une fenêtre, par exemple le lecteur vidéo d'une page web.
+- **Mémoire** : les épingles sont restaurées après une relance d'Épingle, d'une app ou du Mac.
+- **Réglages** : raccourcis personnalisables, fluidité (30 ou 60 images/s), punaise visible ou non, ouverture à la connexion.
 
 ## Comment ça marche
 
-macOS n'autorise pas une app à modifier le niveau des fenêtres d'une autre app. Épingle affiche donc une **copie en direct** de la fenêtre (via ScreenCaptureKit) dans un panneau flottant. Un clic sur la copie amène la vraie fenêtre à cet endroit et lui donne le focus ; dès que vous passez à une autre app, la copie reprend sa place au premier plan.
+macOS n'autorise pas une app à modifier le niveau des fenêtres d'une autre app. Épingle affiche donc une **copie en direct** de la fenêtre (via ScreenCaptureKit) dans un panneau flottant, visible sur tous les bureaux.
 
-La capture reste locale : rien n'est enregistré ni envoyé. L'indicateur violet d'enregistrement d'écran de macOS s'affiche tant qu'une fenêtre est épinglée.
+Quand vous travaillez dans la fenêtre épinglée, la copie disparaît et la capture s'arrête. Dès que vous passez à une autre fenêtre, même dans la même app, la copie reprend sa place au premier plan.
+
+La capture reste locale : rien n'est enregistré ni envoyé. L'indicateur violet d'enregistrement d'écran de macOS s'affiche tant qu'une copie est visible.
 
 ## Installation
 
-Nécessite macOS 14+ (Apple Silicon) et les Command Line Tools (`xcode-select --install`).
+### Télécharger
+
+Chaque version est publiée sur la page [Releases](../../releases) (Apple Silicon et Intel, macOS 14 ou plus). Décompressez l'archive et glissez `Epingle.app` dans Applications.
+
+Sans signature Developer ID, macOS bloque la première ouverture : faites un clic droit sur l'app → **Ouvrir**, ou autorisez-la dans Réglages Système → Confidentialité et sécurité.
+
+### Compiler
+
+Nécessite les Command Line Tools (`xcode-select --install`).
 
 ```sh
-./build.sh
+./build.sh                 # compile et installe dans /Applications
+UNIVERSAL=1 ./build.sh     # binaire universel Apple Silicon + Intel
 ```
 
-L'app est compilée puis installée dans `/Applications/Epingle.app`. Au premier lancement, autorisez Épingle dans **Réglages Système → Confidentialité et sécurité** :
+L'icône est générée par `swift Tools/make-icon.swift`.
 
-- **Accessibilité** : pour mettre les fenêtres au premier plan et les déplacer.
+### Autorisations
+
+Au premier lancement, autorisez Épingle dans **Réglages Système → Confidentialité et sécurité** :
+
+- **Accessibilité** : pour mettre les fenêtres au premier plan, les déplacer et savoir laquelle a le focus.
 - **Enregistrement de l'écran** : pour afficher la copie des fenêtres épinglées.
 
-L'icône est générée par `swift Tools/make-icon.swift`.
+## Publier une version
+
+Poussez un tag : GitHub Actions compile le binaire universel et crée la version.
+
+```sh
+git tag v2.0 && git push origin v2.0
+```
+
+### Signature et notarisation (optionnel)
+
+Avec un compte Apple Developer (99 $/an), l'app s'ouvre sans avertissement et macOS ne redemande plus les autorisations à chaque mise à jour. Ajoutez ces secrets au dépôt (Settings → Secrets and variables → Actions) :
+
+| Secret | Contenu |
+| --- | --- |
+| `MACOS_CERTIFICATE` | Certificat « Developer ID Application » exporté en .p12, encodé en base64 (`base64 -i cert.p12 \| pbcopy`) |
+| `MACOS_CERTIFICATE_PASSWORD` | Mot de passe du .p12 |
+| `SIGN_IDENTITY` | Nom du certificat, ex. `Developer ID Application: Nom Prénom (TEAMID)` |
+| `APPLE_ID` | Adresse de votre compte Apple Developer |
+| `APPLE_TEAM_ID` | Identifiant d'équipe (10 caractères) |
+| `APPLE_APP_PASSWORD` | Mot de passe pour app, créé sur [account.apple.com](https://account.apple.com) |
+
+Sans ces secrets, l'app est signée localement (« ad hoc ») et fonctionne quand même.

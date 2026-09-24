@@ -1,12 +1,16 @@
 import Cocoa
-import Carbon.HIToolbox
 import ServiceManagement
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var pins: [PinnedWindow] = []
-    private var hotKeyRef: EventHotKeyRef?
+    /// Épingles à restaurer dès que leur fenêtre réapparaît (relance d'Épingle ou de l'app d'origine).
+    private var pending: [PinEntry] = []
+    private let focus = FocusTracker()
+    private let search = SearchController()
+    private let preferences = PreferencesController()
+    private var restoreTimer: Timer?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -15,24 +19,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         statusItem.menu = menu
 
-        let ws = NSWorkspace.shared.notificationCenter
-        ws.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] n in
-            let pid = (n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier ?? 0
-            MainActor.assumeIsolated { self?.pins.forEach { $0.appActivated(pid: pid) } }
+        focus.onChange = { [weak self] pid, window in
+            self?.pins.forEach { $0.focusChanged(pid: pid, window: window) }
         }
-        ws.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { [weak self] n in
-            let pid = (n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier ?? 0
-            MainActor.assumeIsolated { self?.pins.filter { $0.info.pid == pid }.forEach { $0.close() } }
+        focus.start()
+        search.onChoose = { [weak self] window, pin in
+            if pin { self?.togglePin(window) } else { Windows.bringToFront(window) }
         }
 
-        registerHotKey()
+        let ws = NSWorkspace.shared.notificationCenter
+        ws.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { [weak self] n in
+            let pid = (n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier ?? 0
+            MainActor.assumeIsolated {
+                self?.pins.filter { $0.info.pid == pid }.forEach { $0.close(appQuit: true) }
+            }
+        }
+        ws.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] _ in
+            // Laisse à l'app le temps d'ouvrir ses fenêtres.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.restorePending() }
+        }
+        NotificationCenter.default.addObserver(forName: Settings.changed, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.registerHotKeys()
+                self?.pins.forEach { $0.applySettings() }
+            }
+        }
+
+        registerHotKeys()
         requestPermissions()
+
         // Premier lancement depuis /Applications : activer l'ouverture à la connexion.
         let key = "loginItemConfigured"
         if !UserDefaults.standard.bool(forKey: key), Bundle.main.bundlePath.hasPrefix("/Applications/") {
             try? SMAppService.mainApp.register()
             UserDefaults.standard.set(true, forKey: key)
         }
+
+        pending = PinStore.load()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.restorePending() }
+    }
+
+    private func registerHotKeys() {
+        HotKeys.shared.register(id: 1, Settings.pinShortcut) { [weak self] in self?.togglePinFrontmost() }
+        HotKeys.shared.register(id: 2, Settings.searchShortcut) { [weak self] in self?.showSearch() }
     }
 
     // MARK: Autorisations
@@ -46,111 +75,173 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !hasScreenCapture { CGRequestScreenCaptureAccess() }
     }
 
-    // MARK: Raccourci global ⌃⌥P
-
-    private func registerHotKey() {
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
-            DispatchQueue.main.async { (NSApp.delegate as? AppDelegate)?.togglePinFrontmost() }
-            return noErr
-        }, 1, &spec, nil, nil)
-        let id = EventHotKeyID(signature: OSType(0x4550_494E), id: 1) // 'EPIN'
-        RegisterEventHotKey(UInt32(kVK_ANSI_P), UInt32(controlKey | optionKey), id,
-                            GetApplicationEventTarget(), 0, &hotKeyRef)
+    @objc private func openPrivacy() {
+        requestPermissions()
+        let pane = hasAccessibility ? "Privacy_ScreenCapture" : "Privacy_Accessibility"
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!)
     }
 
-    @objc func togglePinFrontmost() {
-        guard let w = Windows.frontmost() else { NSSound.beep(); return }
-        if let existing = pins.first(where: { $0.info.id == w.id }) {
-            existing.close()
-        } else {
-            pin(w)
-        }
+    private func askForScreenCapture() {
+        let alert = NSAlert()
+        alert.messageText = "Autorisation « Enregistrement de l'écran » nécessaire"
+        alert.informativeText = "Épingle en a besoin pour afficher la copie des fenêtres épinglées. Activez Épingle dans les réglages, puis relancez l'app."
+        alert.addButton(withTitle: "Ouvrir les réglages")
+        alert.addButton(withTitle: "Annuler")
+        NSApp.activate()
+        if alert.runModal() == .alertFirstButtonReturn { openPrivacy() }
     }
 
     // MARK: Épinglage
 
-    private func pin(_ info: WindowInfo) {
-        guard !pins.contains(where: { $0.info.id == info.id }) else { return }
-        let p = PinnedWindow(info: info)
-        p.onClose = { [weak self] closed in self?.pins.removeAll { $0 === closed } }
+    private func isPinned(_ id: CGWindowID) -> Bool { pins.contains { $0.info.id == id } }
+
+    @objc private func togglePinFrontmost() {
+        let (pid, windowID) = focus.current()
+        let target = windowID.flatMap { Windows.info(for: $0) } ?? Windows.list().first { $0.pid == pid }
+        guard let w = target, w.pid != getpid() else { NSSound.beep(); return }
+        togglePin(w)
+    }
+
+    private func togglePin(_ w: WindowInfo) {
+        if let p = pins.first(where: { $0.info.id == w.id }) { p.close() } else { pin(w) }
+    }
+
+    private func pin(_ info: WindowInfo, restoring entry: PinEntry? = nil) {
+        guard !isPinned(info.id) else { return }
+        guard hasScreenCapture else { askForScreenCapture(); return }
+        if !info.onScreen && entry == nil {
+            // Fenêtre réduite ou sur un autre bureau : on l'affiche d'abord.
+            Windows.bringToFront(info)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                if let fresh = Windows.info(for: info.id), fresh.onScreen { self?.pin(fresh) } else { NSSound.beep() }
+            }
+            return
+        }
+        let p = PinnedWindow(info: info, restoring: entry)
+        p.onClose = { [weak self] closed, appQuit in self?.pinClosed(closed, appQuit: appQuit) }
+        p.onChange = { [weak self] in self?.save() }
         pins.append(p)
-        Task {
-            do {
-                try await p.start()
-                NSSound(named: "Pop")?.play()
-            } catch {
-                p.close()
-                let alert = NSAlert()
-                alert.messageText = "Impossible d'épingler « \(info.label) »"
-                alert.informativeText = error.localizedDescription
-                NSApp.activate()
-                alert.runModal()
+        save()
+        let current = focus.current()
+        p.focusChanged(pid: current.pid, window: current.window)
+        if entry == nil { NSSound(named: "Pop")?.play() }
+    }
+
+    private func pinClosed(_ p: PinnedWindow, appQuit: Bool) {
+        pins.removeAll { $0 === p }
+        if appQuit {
+            pending.append(p.entry)
+            updateRestoreTimer()
+        }
+        save()
+    }
+
+    private func save() {
+        PinStore.save(pins.map(\.entry) + pending)
+    }
+
+    private func restorePending() {
+        guard !pending.isEmpty, hasScreenCapture else { return }
+        let windows = Windows.list(includeOffscreen: true)
+        var remaining: [PinEntry] = []
+        for e in pending {
+            let candidates = windows.filter { $0.bundleID == e.bundleID && !isPinned($0.id) }
+            // Même titre de préférence ; sinon la seule fenêtre de l'app.
+            if let w = candidates.first(where: { $0.title == e.title }) ?? (candidates.count == 1 ? candidates.first : nil) {
+                pin(w, restoring: e)
+            } else {
+                remaining.append(e)
+            }
+        }
+        pending = remaining
+        save()
+        updateRestoreTimer()
+    }
+
+    private func updateRestoreTimer() {
+        if pending.isEmpty {
+            restoreTimer?.invalidate()
+            restoreTimer = nil
+        } else if restoreTimer == nil {
+            restoreTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.restorePending() }
             }
         }
     }
+
+    @objc private func showSearch() {
+        search.toggle(pinned: Set(pins.map(\.info.id)))
+    }
+
+    @objc private func showPreferences() { preferences.show() }
 
     // MARK: Menu
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let pinFront = NSMenuItem(title: "Épingler / désépingler la fenêtre active", action: #selector(togglePinFrontmost), keyEquivalent: "p")
-        pinFront.keyEquivalentModifierMask = [.control, .option]
-        pinFront.target = self
-        menu.addItem(pinFront)
+        addAction(menu, "Rechercher une fenêtre…", #selector(showSearch), shortcut: Settings.searchShortcut)
+        addAction(menu, "Épingler / désépingler la fenêtre active", #selector(togglePinFrontmost), shortcut: Settings.pinShortcut)
 
         if !pins.isEmpty {
             menu.addItem(.separator())
             menu.addItem(.sectionHeader(title: "Épinglées"))
             for p in pins {
-                let item = NSMenuItem(title: p.info.label, action: #selector(unpinItem(_:)), keyEquivalent: "")
-                item.target = self
-                item.representedObject = p
-                item.state = .on
-                item.toolTip = "Cliquer pour désépingler"
+                let item = NSMenuItem(title: truncate(p.info.label), action: nil, keyEquivalent: "")
+                item.image = appIcon(p.info.pid)
+                item.submenu = p.makeMenu()
                 menu.addItem(item)
             }
         }
 
+        if !pending.isEmpty {
+            menu.addItem(.separator())
+            menu.addItem(.sectionHeader(title: "En attente de réouverture"))
+            for (i, e) in pending.enumerated() {
+                let item = addAction(menu, truncate(e.label), #selector(forgetPending(_:)))
+                item.tag = i
+                item.toolTip = "Sera réépinglée quand la fenêtre réapparaîtra. Cliquer pour l'oublier."
+            }
+        }
+
         menu.addItem(.separator())
-        menu.addItem(.sectionHeader(title: "Fenêtres ouvertes"))
-        let windows = Windows.list()
+        menu.addItem(.sectionHeader(title: "Fenêtres"))
+        let windows = Windows.list(includeOffscreen: true)
         if windows.isEmpty { menu.addItem(withTitle: "Aucune fenêtre", action: nil, keyEquivalent: "") }
         for w in windows {
-            let item = NSMenuItem(title: truncate(w.label), action: nil, keyEquivalent: "")
-            if let app = NSRunningApplication(processIdentifier: w.pid), let icon = app.icon {
-                icon.size = NSSize(width: 16, height: 16)
-                item.image = icon
-            }
+            let item = NSMenuItem(title: truncate(w.label) + (w.onScreen ? "" : " (masquée)"), action: nil, keyEquivalent: "")
+            item.image = appIcon(w.pid)
             let sub = NSMenu()
-            let front = NSMenuItem(title: "Mettre au premier plan", action: #selector(frontItem(_:)), keyEquivalent: "")
-            front.target = self
-            front.representedObject = w
-            sub.addItem(front)
-            let isPinned = pins.contains { $0.info.id == w.id }
-            let pinItem = NSMenuItem(title: isPinned ? "Désépingler" : "Épingler (toujours au premier plan)",
-                                     action: #selector(pinItem(_:)), keyEquivalent: "")
-            pinItem.target = self
-            pinItem.representedObject = w
-            sub.addItem(pinItem)
+            addAction(sub, "Mettre au premier plan", #selector(frontItem(_:))).representedObject = w
+            let pinned = isPinned(w.id)
+            addAction(sub, pinned ? "Désépingler" : "Épingler (toujours au premier plan)", #selector(pinItem(_:)))
+                .representedObject = w
             item.submenu = sub
             menu.addItem(item)
         }
 
-        if !hasAccessibility || !hasScreenCapture {
-            menu.addItem(.separator())
-            let perm = NSMenuItem(title: "⚠️ Autorisations manquantes…", action: #selector(openPrivacy), keyEquivalent: "")
-            perm.target = self
-            menu.addItem(perm)
-        }
-
         menu.addItem(.separator())
-        let login = NSMenuItem(title: "Ouvrir à l'ouverture de session", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
-        login.target = self
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        menu.addItem(login)
+        if !hasAccessibility || !hasScreenCapture {
+            addAction(menu, "⚠️ Autorisations manquantes…", #selector(openPrivacy))
+        }
+        let prefs = addAction(menu, "Réglages…", #selector(showPreferences))
+        prefs.keyEquivalent = ","
         menu.addItem(withTitle: "Quitter Épingle", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    }
+
+    @discardableResult
+    private func addAction(_ menu: NSMenu, _ title: String, _ action: Selector, shortcut: Shortcut? = nil) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: shortcut?.menuKeyEquivalent ?? "")
+        if let shortcut { item.keyEquivalentModifierMask = shortcut.menuModifiers }
+        item.target = self
+        menu.addItem(item)
+        return item
+    }
+
+    private func appIcon(_ pid: pid_t) -> NSImage? {
+        guard let icon = NSRunningApplication(processIdentifier: pid)?.icon?.copy() as? NSImage else { return nil }
+        icon.size = NSSize(width: 16, height: 16)
+        return icon
     }
 
     private func truncate(_ s: String) -> String { s.count > 70 ? String(s.prefix(67)) + "…" : s }
@@ -162,33 +253,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func pinItem(_ sender: NSMenuItem) {
         guard let w = sender.representedObject as? WindowInfo else { return }
-        if let existing = pins.first(where: { $0.info.id == w.id }) { existing.close() } else { pin(w) }
+        togglePin(w)
     }
 
-    @objc private func unpinItem(_ sender: NSMenuItem) {
-        (sender.representedObject as? PinnedWindow)?.close()
-    }
-
-    @objc private func toggleLaunchAtLogin() {
-        do {
-            if SMAppService.mainApp.status == .enabled {
-                try SMAppService.mainApp.unregister()
-            } else {
-                try SMAppService.mainApp.register()
-            }
-        } catch {
-            let alert = NSAlert()
-            alert.messageText = "Impossible de modifier l'ouverture à la connexion"
-            alert.informativeText = error.localizedDescription
-            NSApp.activate()
-            alert.runModal()
-        }
-    }
-
-    @objc private func openPrivacy() {
-        requestPermissions()
-        let pane = hasAccessibility ? "Privacy_ScreenCapture" : "Privacy_Accessibility"
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!)
+    @objc private func forgetPending(_ sender: NSMenuItem) {
+        guard pending.indices.contains(sender.tag) else { return }
+        pending.remove(at: sender.tag)
+        save()
+        updateRestoreTimer()
     }
 }
 
