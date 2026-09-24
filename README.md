@@ -8,7 +8,7 @@
 
 - **Recherche rapide (⌃⌥Espace)** : tapez quelques lettres pour trouver une fenêtre. ↩ la met au premier plan, ⌘↩ l'épingle ou la désépingle.
 - **Épingler la fenêtre active (⌃⌥P)** : même raccourci pour la désépingler.
-- **Menu 📌** : toutes les fenêtres, y compris celles réduites ou sur un autre bureau, avec leurs actions.
+- **Menu 📌** : toutes les fenêtres avec leurs actions. Les fenêtres masquées (réduites ou sur un autre bureau) peuvent être mises au premier plan, mais pas épinglées.
 - **Sur une fenêtre épinglée** :
   - clic : travailler dans la vraie fenêtre ; glisser : déplacer ;
   - glisser un coin (sauf en haut à droite) : redimensionner, pour garder une miniature dans un coin de l'écran ;

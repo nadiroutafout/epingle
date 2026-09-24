@@ -109,14 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func pin(_ info: WindowInfo, restoring entry: PinEntry? = nil) {
         guard !isPinned(info.id) else { return }
         guard hasScreenCapture else { askForScreenCapture(); return }
-        if !info.onScreen && entry == nil {
-            // Fenêtre réduite ou sur un autre bureau : on l'affiche d'abord.
-            Windows.bringToFront(info)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-                if let fresh = Windows.info(for: info.id), fresh.onScreen { self?.pin(fresh) } else { NSSound.beep() }
-            }
-            return
-        }
+        // Les fenêtres masquées (réduites ou sur un autre bureau) ne s'épinglent pas.
+        guard info.onScreen || entry != nil else { NSSound.beep(); return }
         let p = PinnedWindow(info: info, restoring: entry)
         p.onClose = { [weak self] closed, appQuit in self?.pinClosed(closed, appQuit: appQuit) }
         p.onChange = { [weak self] in self?.save() }
@@ -213,9 +207,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.image = appIcon(w.pid)
             let sub = NSMenu()
             addAction(sub, "Mettre au premier plan", #selector(frontItem(_:))).representedObject = w
-            let pinned = isPinned(w.id)
-            addAction(sub, pinned ? "Désépingler" : "Épingler (toujours au premier plan)", #selector(pinItem(_:)))
-                .representedObject = w
+            if isPinned(w.id) {
+                addAction(sub, "Désépingler", #selector(pinItem(_:))).representedObject = w
+            } else if w.onScreen {
+                addAction(sub, "Épingler (toujours au premier plan)", #selector(pinItem(_:))).representedObject = w
+            }
             item.submenu = sub
             menu.addItem(item)
         }
